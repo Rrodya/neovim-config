@@ -129,8 +129,13 @@ vim.o.smartcase = true
 -- Keep signcolumn on by default
 vim.o.signcolumn = 'yes'
 
--- Decrease update time
+-- Decrease update time (ниже = быстрее компиляция, LSP hints)
 vim.o.updatetime = 250
+
+-- Filetype для .vue (Volar не подхватит без этого)
+vim.filetype.add({
+  extension = { vue = 'vue' },
+})
 
 -- Decrease mapped sequence wait time
 vim.o.timeoutlen = 300
@@ -419,35 +424,31 @@ require('lazy').setup({
 
       -- This runs on LSP attach per buffer (see main LSP attach function in 'neovim/nvim-lspconfig' config for more info,
       -- it is better explained there). This allows easily switching between pickers if you prefer using something else!
+      -- Вызов LSP-метода только если сервер его поддерживает (gri/grt не все поддерживают)
+      local function lsp_picker(method, picker_fn)
+        return function()
+          local clients = vim.lsp.get_clients({ bufnr = 0 })
+          for _, c in ipairs(clients) do
+            if c.supports_method(method) then
+              picker_fn()
+              return
+            end
+          end
+          vim.notify('LSP: метод не поддерживается', vim.log.levels.INFO)
+        end
+      end
+
       vim.api.nvim_create_autocmd('LspAttach', {
         group = vim.api.nvim_create_augroup('telescope-lsp-attach', { clear = true }),
         callback = function(event)
           local buf = event.buf
 
-          -- Find references for the word under your cursor.
           vim.keymap.set('n', 'grr', builtin.lsp_references, { buffer = buf, desc = '[G]oto [R]eferences' })
-
-          -- Jump to the implementation of the word under your cursor.
-          -- Useful when your language has ways of declaring types without an actual implementation.
-          vim.keymap.set('n', 'gri', builtin.lsp_implementations, { buffer = buf, desc = '[G]oto [I]mplementation' })
-
-          -- Jump to the definition of the word under your cursor.
-          -- This is where a variable was first declared, or where a function is defined, etc.
-          -- To jump back, press <C-t>.
+          vim.keymap.set('n', 'gri', lsp_picker('textDocument/implementation', builtin.lsp_implementations), { buffer = buf, desc = '[G]oto [I]mplementation' })
           vim.keymap.set('n', 'grd', builtin.lsp_definitions, { buffer = buf, desc = '[G]oto [D]efinition' })
-
-          -- Fuzzy find all the symbols in your current document.
-          -- Symbols are things like variables, functions, types, etc.
           vim.keymap.set('n', 'gO', builtin.lsp_document_symbols, { buffer = buf, desc = 'Open Document Symbols' })
-
-          -- Fuzzy find all the symbols in your current workspace.
-          -- Similar to document symbols, except searches over your entire project.
           vim.keymap.set('n', 'gW', builtin.lsp_dynamic_workspace_symbols, { buffer = buf, desc = 'Open Workspace Symbols' })
-
-          -- Jump to the type of the word under your cursor.
-          -- Useful when you're not sure what type a variable is and you want to see
-          -- the definition of its *type*, not where it was *defined*.
-          vim.keymap.set('n', 'grt', builtin.lsp_type_definitions, { buffer = buf, desc = '[G]oto [T]ype Definition' })
+          vim.keymap.set('n', 'grt', lsp_picker('textDocument/typeDefinition', builtin.lsp_type_definitions), { buffer = buf, desc = '[G]oto [T]ype Definition' })
         end,
       })
 
@@ -548,6 +549,11 @@ require('lazy').setup({
           --  Most Language Servers support renaming across files, etc.
           map('grn', vim.lsp.buf.rename, '[R]e[n]ame')
 
+          -- gd — переход к определению (в т.ч. в другом файле, как Cmd+click в JetBrains)
+          map('gd', vim.lsp.buf.definition, '[G]oto [D]efinition')
+          -- <C-]> — альтернатива (классика vim)
+          map('<C-]>', vim.lsp.buf.definition, '[G]oto [D]efinition')
+
           -- Execute a code action, usually your cursor needs to be on top of an error
           -- or a suggestion from your LSP for this to activate.
           map('gra', vim.lsp.buf.code_action, '[G]oto Code [A]ction', { 'n', 'x' })
@@ -601,15 +607,51 @@ require('lazy').setup({
       ---@type table<string, vim.lsp.Config>
       local servers = {
         -- clangd = {},
-        gopls = {},
-        -- pyright = {},
-        -- rust_analyzer = {},
-        --
-        -- Some languages (like typescript) have entire language plugins that can be useful:
-        --    https://github.com/pmizio/typescript-tools.nvim
-        --
-        -- But for many setups, the LSP (`ts_ls`) will work just fine
-        -- ts_ls = {},
+        gopls = {
+          settings = {
+            gopls = {
+              completeUnimported = true,
+              staticcheck = true,
+              gofumpt = true,
+              analyses = { unusedparams = true },
+            },
+          },
+        },
+        ts_ls = (function()
+          local vue_plugin_path = vim.fn.stdpath('data') .. '/mason/packages/vue-language-server/node_modules/@vue/language-server'
+          local plugins = {}
+          if vim.uv and vim.uv.fs_stat(vue_plugin_path) then
+            plugins = {
+              {
+                name = '@vue/typescript-plugin',
+                location = vue_plugin_path,
+                languages = { 'vue' },
+              },
+            }
+          end
+          return {
+            filetypes = { 'typescript', 'javascript', 'typescriptreact', 'javascriptreact', 'vue' },
+            init_options = { plugins = plugins },
+            settings = {
+              typescript = {
+                suggest = { autoImports = true },
+                preferences = { importModuleSpecifier = 'shortest' },
+              },
+              javascript = {
+                suggest = { autoImports = true },
+                preferences = { importModuleSpecifier = 'shortest' },
+              },
+            },
+          }
+        end)(),
+        vue_ls = {
+          -- Vue 3 (Volar) — TS, template, CSS в <style>
+          -- CSS в style-блоке обрабатывает сам vue-language-server
+        },
+        cssls = {
+          filetypes = { 'css', 'scss', 'less' },
+          -- vue не добавляем — cssls не понимает embedded CSS, vue_ls обрабатывает <style> сам
+        },
 
         stylua = {}, -- Used to format Lua code
 
@@ -650,9 +692,21 @@ require('lazy').setup({
       --    :Mason
       --
       -- You can press `g?` for help in this menu.
-      local ensure_installed = vim.tbl_keys(servers or {})
+      -- mason-tool-installer использует имена пакетов Mason, не lspconfig
+      local mason_names = {
+        ts_ls = 'typescript-language-server',
+        vue_ls = 'vue-language-server',
+        cssls = 'css-lsp',
+      }
+      local ensure_installed = {}
+      for name, _ in pairs(servers or {}) do
+        table.insert(ensure_installed, mason_names[name] or name)
+      end
       vim.list_extend(ensure_installed, {
-        -- You can add other tools here that you want Mason to install
+        'prettierd', 'prettier', -- JS/TS/Vue
+        'gofumpt', -- Go
+        'css-lsp', -- CSS в .vue и .css
+        'eslint_d', -- ESLint (линтер + автофикс стиля)
       })
 
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
@@ -679,7 +733,7 @@ require('lazy').setup({
     ---@module 'conform'
     ---@type conform.setupOpts
     opts = {
-      notify_on_error = false,
+      notify_on_error = true, -- показывать ошибки форматирования
       format_on_save = function(bufnr)
         -- Disable "format_on_save lsp_fallback" for languages that don't
         -- have a well standardized coding style. You can add additional
@@ -696,11 +750,13 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
-        -- Conform can also run multiple formatters sequentially
-        -- python = { "isort", "black" },
-        --
-        -- You can use 'stop_after_first' to run the first available formatter from the list
-        -- javascript = { "prettierd", "prettier", stop_after_first = true },
+        -- eslint_d фиксит кавычки, отступы и т.п. по .eslintrc, потом prettier
+        javascript = { 'eslint_d', 'prettierd', 'prettier', stop_after_first = true },
+        javascriptreact = { 'eslint_d', 'prettierd', 'prettier', stop_after_first = true },
+        typescript = { 'eslint_d', 'prettierd', 'prettier', stop_after_first = true },
+        typescriptreact = { 'eslint_d', 'prettierd', 'prettier', stop_after_first = true },
+        vue = { 'eslint_d', 'prettierd', 'prettier', stop_after_first = true },
+        go = { 'gofumpt', stop_after_first = true },
       },
     },
   },
@@ -722,15 +778,12 @@ require('lazy').setup({
           return 'make install_jsregexp'
         end)(),
         dependencies = {
-          -- `friendly-snippets` contains a variety of premade snippets.
-          --    See the README about individual language/framework/plugin snippets:
-          --    https://github.com/rafamadriz/friendly-snippets
-          -- {
-          --   'rafamadriz/friendly-snippets',
-          --   config = function()
-          --     require('luasnip.loaders.from_vscode').lazy_load()
-          --   end,
-          -- },
+          {
+            'rafamadriz/friendly-snippets',
+            config = function()
+              require('luasnip.loaders.from_vscode').lazy_load()
+            end,
+          },
         },
         opts = {},
       },
@@ -789,9 +842,8 @@ require('lazy').setup({
       },
 
       completion = {
-        -- By default, you may press `<c-space>` to show the documentation.
-        -- Optionally, set `auto_show = true` to show the documentation after a delay.
-        documentation = { auto_show = false, auto_show_delay_ms = 500 },
+        -- Документация как в VSCode/JetBrains — показывается при выборе
+        documentation = { auto_show = true, auto_show_delay_ms = 300 },
       },
 
       sources = {
@@ -890,7 +942,11 @@ require('lazy').setup({
     branch = 'main',
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter-intro`
     config = function()
-      local parsers = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
+      local parsers = {
+        'bash', 'c', 'css', 'diff', 'go', 'html', 'javascript', 'less', 'lua',
+        'luadoc', 'markdown', 'markdown_inline', 'query', 'scss', 'tsx',
+        'typescript', 'vim', 'vimdoc', 'vue',
+      }
       require('nvim-treesitter').install(parsers)
       vim.api.nvim_create_autocmd('FileType', {
         callback = function(args)

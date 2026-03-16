@@ -20,12 +20,21 @@ return {
   ---@type neotree.Config
   opts = {
     filesystem = {
+      -- При открытии дерева — сразу показывать текущий файл и его соседей
+      follow_current_file = { enabled = true },
+      hijack_netrw_behavior = 'open_current',
+      filtered_items = {
+        hide_dotfiles = false, -- показывать .gitignore, .env и т.п.
+      },
       window = {
         mappings = {
           ['<CR>'] = 'open',
           ['o'] = 'open',
           ['v'] = 'open_vsplit',
           ['s'] = 'open_split',
+          ['a'] = 'add', -- создать файл/папку в текущей директории
+          ['d'] = 'delete', -- удалить
+          ['r'] = 'rename', -- переименовать
           ['<esc>'] = 'close_window',
           ['q'] = 'close_window',
         },
