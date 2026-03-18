@@ -653,6 +653,8 @@ require('lazy').setup({
           -- vue не добавляем — cssls не понимает embedded CSS, vue_ls обрабатывает <style> сам
         },
 
+        pyright = {}, -- Python — LSP, completion, type hints
+
         stylua = {}, -- Used to format Lua code
 
         -- Special Lua Config, as recommended by neovim help docs
@@ -707,6 +709,8 @@ require('lazy').setup({
         'gofumpt', -- Go
         'css-lsp', -- CSS в .vue и .css
         'eslint_d', -- ESLint (линтер + автофикс стиля)
+        'pyright', -- Python LSP
+        'ruff', -- Python: линтер + форматтер
       })
 
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
@@ -756,6 +760,7 @@ require('lazy').setup({
         typescript = { 'eslint_d', 'prettierd', 'prettier', stop_after_first = true },
         typescriptreact = { 'eslint_d', 'prettierd', 'prettier', stop_after_first = true },
         vue = { 'eslint_d', 'prettierd', 'prettier', stop_after_first = true },
+        python = { 'ruff', stop_after_first = true },
         go = { 'gofumpt', stop_after_first = true },
       },
     },
@@ -944,8 +949,8 @@ require('lazy').setup({
     config = function()
       local parsers = {
         'bash', 'c', 'css', 'diff', 'go', 'html', 'javascript', 'less', 'lua',
-        'luadoc', 'markdown', 'markdown_inline', 'query', 'scss', 'tsx',
-        'typescript', 'vim', 'vimdoc', 'vue',
+        'luadoc', 'markdown', 'markdown_inline', 'python', 'query', 'scss',
+        'tsx', 'typescript', 'vim', 'vimdoc', 'vue',
       }
       require('nvim-treesitter').install(parsers)
       vim.api.nvim_create_autocmd('FileType', {

@@ -14,6 +14,7 @@ return {
       typescript = { 'eslint_d', 'eslint' },
       typescriptreact = { 'eslint_d', 'eslint' },
       vue = { 'eslint_d', 'eslint' },
+      python = { 'ruff' },
     }
 
     -- To allow other plugins to add linters to require('lint').linters_by_ft,
